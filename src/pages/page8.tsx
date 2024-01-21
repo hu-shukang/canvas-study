@@ -1,36 +1,85 @@
 import { useEffect, useRef } from 'react';
 import useWindow from '../hooks/window.hook';
 
+type MovingStatus = 'MOVING' | 'MOVED' | 'STATIC';
+
+type Point = {
+  x: number;
+  y: number;
+};
+
 class Circle {
-  // 添加速度和目标位置属性
+  public static CURRENT_TIME = 0;
   private _originX: number;
   private _originY: number;
   private _x: number;
   private _y: number;
+  private _toX: number;
+  private _toY: number;
   private _color: string = '#ffffff';
+  private _movingStatus: MovingStatus;
+  private _startTime: number = 0;
 
   constructor(x: number, y: number) {
     this._originX = x;
     this._originY = y;
     this._x = x;
     this._y = y;
+    this._toX = x;
+    this._toY = y;
+    this._movingStatus = 'STATIC';
   }
 
-  // 方法来更新圆点位置
-  update(mouseX: number, mouseY: number) {
+  update(time: number) {
+    if (this._movingStatus === 'MOVING') {
+      const t = time - this._startTime;
+      const speed = t / 2000 > 1 ? 1 : t / 2000;
+      this._x = speed * (this._toX - this._x) + this._x;
+      this._y = speed * (this._toY - this._y) + this._y;
+      if (speed === 1) {
+        this._movingStatus = 'MOVED';
+        this._startTime = 0;
+      }
+    }
+  }
+
+  move(mouseX: number, mouseY: number) {
+    if (this._movingStatus === 'MOVING') {
+      return;
+    }
     const dx = mouseX - this._originX;
     const dy = mouseY - this._originY;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < 40) {
-      const angle = Math.atan2(dy, dx);
-      const targetX = mouseX + Math.cos(angle) * 40; // 20是飘散的距离
-      const targetY = mouseY + Math.sin(angle) * 40;
-      this._x = targetX;
-      this._y = targetY;
+    if (distance < 10) {
+      const { x, y } = this.forwardPoint({ x: mouseX, y: mouseY }, { x: this._x, y: this._y }, 10);
+      this._toX = x;
+      this._toY = y;
+      this._movingStatus = 'MOVING';
+      this._startTime = Circle.CURRENT_TIME;
     } else {
-      this._x = this._originX;
-      this._y = this._originY;
+      if (this._movingStatus === 'MOVED') {
+        this._toX = this._originX;
+        this._toY = this._originY;
+        this._movingStatus = 'MOVING';
+        this._startTime = Circle.CURRENT_TIME;
+      }
     }
+  }
+
+  private forwardPoint(mousePoint: Point, circlePoint: Point, distance: number) {
+    // 计算方向向量 (mousePoint -> circlePoint)
+    const directionVector = { x: circlePoint.x - mousePoint.x, y: circlePoint.y - mousePoint.y };
+    // 计算向量长度
+    const length = Math.sqrt(directionVector.x * directionVector.x + directionVector.y * directionVector.y);
+    // 标准化向量 (使其长度为 1)
+    const normalizedVector = { x: directionVector.x / length, y: directionVector.y / length };
+    // 将标准化向量乘以距离
+    const moveVector = { x: normalizedVector.x * distance, y: normalizedVector.y * distance };
+
+    return {
+      x: circlePoint.x + moveVector.x,
+      y: circlePoint.y + moveVector.y,
+    };
   }
 
   get x() {
@@ -77,22 +126,25 @@ const Page8 = () => {
         }
       }
     }
-    const drawAll = () => {
+    const drawAll = (time: number) => {
       ctx.clearRect(0, 0, width, height);
+      Circle.CURRENT_TIME = time;
+      console.log(time);
       for (const circle of list) {
         ctx.beginPath();
+        circle.update(time);
         ctx.arc(circle.x, circle.y, 1, 0, Math.PI);
         ctx.fillStyle = circle.color;
         ctx.fill();
       }
     };
 
-    const animate = () => {
-      drawAll();
+    const animate = (time: number) => {
+      drawAll(time);
       animationFrameId.current = requestAnimationFrame(animate);
     };
     // 开始动画
-    animate();
+    animationFrameId.current = requestAnimationFrame(animate);
     circleList.current = list;
 
     // 清理函数
@@ -110,7 +162,7 @@ const Page8 = () => {
     const mouseY = event.clientY - rect.top;
 
     for (const circle of circleList.current) {
-      circle.update(mouseX, mouseY);
+      circle.move(mouseX, mouseY);
     }
   };
 
